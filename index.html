@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR พฤกษศาสตร์มหัศจรรย์: การเจริญเติบโตของพืช (Plant Growth WebAR Game)</title>
+    
+    <!-- Tailwind CSS for Modern Glassmorphism UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts (Inter & Sarabun for Thai support) -->
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- MediaPipe Pose Tracking Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Sarabun', 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            overflow-x: hidden;
+            touch-action: none;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.82);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.07);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        @keyframes floatSlow {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(2deg); }
+        }
+
+        .floating {
+            animation: floatSlow 4s ease-in-out infinite;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 25px rgba(16, 185, 129, 0.5); }
+            50% { box-shadow: 0 0 45px rgba(6, 182, 212, 0.8); }
+        }
+
+        .glow-effect {
+            animation: pulseGlow 3s infinite;
+        }
+
+        /* Hide scrollbar for clean UI */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-between relative select-none">
+
+    <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <div class="absolute -top-40 -left-40 w-96 h-96 bg-emerald-500/25 rounded-full blur-3xl"></div>
+        <div class="absolute top-1/2 -right-40 w-96 h-96 bg-cyan-500/25 rounded-full blur-3xl"></div>
+        <div class="absolute -bottom-40 left-1/3 w-96 h-96 bg-amber-500/20 rounded-full blur-3xl"></div>
+    </div>
+
+    <header class="w-full max-w-6xl mx-auto p-4 z-20 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center space-x-3">
+            <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 via-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-emerald-500/40 border border-white/20">
+                <i class="fa-solid fa-seedling text-2xl text-white"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-300 to-amber-300">
+                    AR พฤกษศาสตร์มหัศจรรย์
+                </h1>
+                <p class="text-xs text-slate-300 font-medium">การเจริญเติบโตของพืชด้วยน้ำ ปุ๋ย และแสง (Evidence-Based Science)</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <!-- FPS & Mode Indicator -->
+            <div class="glass-card px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 border-emerald-500/30">
+                <span id="fps-counter" class="text-emerald-400 font-mono font-bold">FPS: 60</span>
+                <span class="text-slate-500">|</span>
+                <span id="control-mode-badge" class="text-cyan-400 font-semibold">AI Pose AR</span>
+            </div>
+            <!-- Sound Toggle -->
+            <button id="sound-btn" onclick="toggleSound()" class="glass-card hover:bg-white/20 p-2.5 rounded-xl transition text-slate-200 hover:text-white shadow-md border-white/20">
+                <i class="fa-solid fa-volume-high text-sm"></i>
+            </button>
+            <!-- Info Modal Trigger -->
+            <button onclick="openInfoModal()" class="glass-card hover:bg-emerald-500/20 px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-300 transition flex items-center gap-1.5 border-emerald-500/40 shadow-lg shadow-emerald-900/30">
+                <i class="fa-solid fa-book-open text-emerald-400"></i> บทเรียน
+            </button>
+        </div>
+    </header>
+
+    <main class="w-full max-w-5xl mx-auto px-4 flex-1 flex flex-col items-center justify-center relative z-10 my-2">
+        
+        <!-- Game Container -->
+        <div id="game-container" class="relative w-full aspect-[4/3] sm:aspect-[16/10] max-h-[70vh] rounded-3xl overflow-hidden glass-panel shadow-2xl border border-white/20 flex items-center justify-center">
+            
+            <!-- Video feed for MediaPipe Pose -->
+            <video id="webcam" class="absolute inset-0 w-full h-full object-cover transform -scale-x-100 opacity-60 pointer-events-none" autoplay playsinline muted></video>
+            
+            <!-- Canvas Overlay for Game Graphics -->
+            <canvas id="game-canvas" class="absolute inset-0 w-full h-full z-10"></canvas>
+
+            <!-- Loading / Permission Overlay with Mangrove Tree Graphic & Colorful Styling -->
+            <div id="loading-overlay" class="absolute inset-0 bg-slate-950/90 backdrop-blur-2xl z-30 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
+                
+                <div class="absolute -top-20 -left-20 w-80 h-80 bg-emerald-500/30 rounded-full blur-3xl pointer-events-none animate-pulse"></div>
+                <div class="absolute -bottom-20 -right-20 w-80 h-80 bg-cyan-500/30 rounded-full blur-3xl pointer-events-none animate-pulse"></div>
+                <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-500/20 rounded-full blur-3xl pointer-events-none animate-pulse"></div>
+
+                <!-- Mangrove Tree Illustration Graphic with Colorful Glowing Badge Border -->
+                <div class="relative w-44 h-44 mb-6 flex items-center justify-center glow-effect rounded-3xl p-1 bg-gradient-to-tr from-emerald-400 via-cyan-400 to-amber-400">
+                    <div class="w-full h-full rounded-[22px] bg-slate-900 overflow-hidden flex items-center justify-center relative">
+                        <img src="https://lh3.googleusercontent.com/d/1Gzey_sXqTBMKEr5QEsuyVAlsiux7xmMv" alt="ต้นโกงกาง" class="w-full h-full object-cover rounded-2xl shadow-2xl floating">
+                    </div>
+                </div>
+
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-300 to-amber-300 mb-2 drop-shadow-lg">AR พฤกษศาสตร์มหัศจรรย์</h2>
+                <p class="text-sm sm:text-base text-slate-200 max-w-lg mb-8 leading-relaxed font-medium">สำรวจการเจริญเติบโตของพืชผ่านหลักฐานเชิงประจักษ์ รวบรวมน้ำ ปุ๋ย และแสงแดด พร้อมเปิดกล้องใช้งาน AI โพสท่าตรวจจับร่างกาย หรือเล่นด้วยโหมดสำรองได้ทันที</p>
+                
+                <div class="flex flex-wrap gap-4 justify-center relative z-10">
+                    <button onclick="initGameEngine(true)" class="px-7 py-3.5 bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-500 text-white font-bold rounded-2xl shadow-[0_0_30px_rgba(16,185,129,0.6)] hover:shadow-[0_0_40px_rgba(6,182,212,0.9)] transition transform hover:scale-105 flex items-center gap-2.5 border border-white/30">
+                        <i class="fa-solid fa-camera text-lg text-emerald-200"></i> เริ่มต้นด้วยระบบ AR กล้อง
+                    </button>
+                    <button onclick="initGameEngine(false)" class="px-7 py-3.5 glass-card hover:bg-white/25 text-slate-100 font-semibold rounded-2xl transition transform hover:scale-105 flex items-center gap-2.5 border border-white/30 shadow-xl">
+                        <i class="fa-solid fa-gamepad text-lg text-amber-400"></i> เล่นแบบสำรอง (Mouse/Touch)
+                    </button>
+                </div>
+            </div>
+
+            <!-- HUD Overlay inside Game -->
+            <div id="game-hud" class="absolute top-4 left-4 right-4 z-20 flex justify-between items-center pointer-events-none hidden">
+                <div class="flex items-center gap-3">
+                    <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-2 border-emerald-500/40 shadow-lg">
+                        <i class="fa-solid fa-layer-group text-emerald-400"></i>
+                        <span id="hud-level" class="text-sm font-bold text-emerald-300">ด่าน 1/3</span>
+                    </div>
+                    <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-2 border-cyan-500/40 shadow-lg">
+                        <i class="fa-solid fa-clock text-cyan-400"></i>
+                        <span id="hud-timer" class="text-sm font-bold text-cyan-300">50s</span>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-2 border-rose-500/40 shadow-lg">
+                        <i class="fa-solid fa-heart text-rose-500 animate-pulse"></i>
+                        <div class="w-24 bg-slate-800 h-3 rounded-full overflow-hidden border border-rose-500/30">
+                            <div id="hud-hp" class="bg-gradient-to-r from-rose-500 via-orange-400 to-emerald-400 h-full w-full transition-all duration-300"></div>
+                        </div>
+                    </div>
+                    <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-2 border-emerald-500/40 shadow-lg">
+                        <i class="fa-solid fa-seedling text-emerald-400"></i>
+                        <span id="hud-growth" class="text-sm font-bold text-emerald-300">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- In-game Notification Banner -->
+            <div id="game-banner" class="absolute top-4 left-1/2 transform -translate-x-1/2 z-25 glass-panel px-6 py-3 rounded-2xl text-center shadow-2xl hidden transition-all duration-300 pointer-events-none border-cyan-500/50">
+                <p id="banner-text" class="text-sm sm:text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-emerald-300">💡 คำแนะนำ: ขยับร่างกายซ้าย-ขวาเพื่อเก็บหยดน้ำและปุ๋ยบำรุงต้นไม้!</p>
+            </div>
+
+        </div>
+
+    </main>
+
+    <footer class="w-full max-w-5xl mx-auto p-4 z-20 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-2">
+        <p>© 2026 Senior WebAR Science Games. พัฒนาขึ้นเพื่อส่งเสริมการเรียนรู้หลักฐานเชิงประจักษ์พืชต้องการน้ำ ปุ๋ย และแสง</p>
+        <div class="flex items-center gap-4">
+            <span><i class="fa-solid fa-hand-pointer text-emerald-400 mr-1"></i> ใช้มือ/ตัวซ้าย-ขวา หรือ ปุ่มลูกศร / ลากเมาส์</span>
+        </div>
+    </footer>
+
+    <div id="info-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xl z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass-panel max-w-2xl w-full p-6 sm:p-9 rounded-3xl shadow-[0_0_60px_rgba(16,185,129,0.3)] border-2 border-emerald-500/40 relative max-h-[90vh] overflow-y-auto">
+            <button onclick="closeInfoModal()" class="absolute top-6 right-6 w-10 h-10 rounded-full glass-card hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition text-lg border-white/20">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            
+            <div class="flex items-center gap-4 mb-6">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-cyan-400 text-white flex items-center justify-center text-2xl shadow-lg shadow-emerald-500/50 border border-white/20">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+                <div>
+                    <h3 class="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-cyan-300 to-amber-300">คู่มือการเรียนรู้วิทยาศาสตร์</h3>
+                    <p class="text-xs text-slate-300 font-medium">ปัจจัยสำคัญในการเจริญเติบโตของพืช</p>
+                </div>
+            </div>
+
+            <div class="space-y-5 text-sm sm:text-base text-slate-200 leading-relaxed">
+                <div class="glass-card p-5 rounded-2xl border-emerald-500/30 shadow-xl bg-gradient-to-r from-emerald-950/30 to-slate-900/50">
+                    <h4 class="font-bold text-emerald-300 mb-2 flex items-center gap-2 text-base"><i class="fa-solid fa-bullseye text-emerald-400"></i> จุดประสงค์การเรียนรู้</h4>
+                    <p class="text-slate-300">ผู้เรียนสามารถระบุและอธิบายความสำคัญของ <strong>น้ำ ปุ๋ย และแสงแดด</strong> ต่อการเจริญเติบโตของพืช โดยอาศัยหลักฐานเชิงประจักษ์จากเกมจำลองสถานการณ์นี้</p>
+                </div>
+
+                <div class="glass-card p-5 rounded-2xl border-cyan-500/30 shadow-xl bg-gradient-to-r from-cyan-950/30 to-slate-900/50">
+                    <h4 class="font-bold text-cyan-300 mb-2 flex items-center gap-2 text-base"><i class="fa-solid fa-lightbulb text-cyan-400"></i> สาระสำคัญ (Core Concepts)</h4>
+                    <p class="text-slate-300">พืชเป็นสิ่งมีชีวิตที่ต้องการปัจจัยภายนอกที่จำเป็น ได้แก่ <strong>น้ำ</strong> (ช่วยละลายและลำเลียงแร่ธาตุ), <strong>ปุ๋ย</strong> (ให้ธาตุอาหารหลักไนโตรเจน ฟอสฟอรัส โพแทสเซียม), และ <strong>แสงแดด</strong> (พลังงานสำคัญในกระบวนการสังเคราะห์ด้วยแสงเพื่อสร้างอาหาร)</p>
+                </div>
+
+                <div class="glass-card p-5 rounded-2xl border-amber-500/30 shadow-xl bg-gradient-to-r from-amber-950/30 to-slate-900/50">
+                    <h4 class="font-bold text-amber-300 mb-3 flex items-center gap-2 text-base"><i class="fa-solid fa-key text-amber-400"></i> คำศัพท์สำคัญ (Key Vocabulary)</h4>
+                    <div class="flex flex-wrap gap-2.5 mt-1">
+                        <span class="px-3.5 py-1.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs sm:text-sm font-semibold shadow-md">💧 น้ำ (Water)</span>
+                        <span class="px-3.5 py-1.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs sm:text-sm font-semibold shadow-md">🌱 ปุ๋ย (Fertilizer)</span>
+                        <span class="px-3.5 py-1.5 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-xl text-xs sm:text-sm font-semibold shadow-md">☀️ แสงแดด (Sunlight)</span>
+                        <span class="px-3.5 py-1.5 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 rounded-xl text-xs sm:text-sm font-semibold shadow-md">🌿 การเจริญเติบโต (Growth)</span>
+                        <span class="px-3.5 py-1.5 bg-purple-500/20 border border-purple-500/40 text-purple-300 rounded-xl text-xs sm:text-sm font-semibold shadow-md">🔬 หลักฐานเชิงประจักษ์ (Empirical Evidence)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8 text-center">
+                <button onclick="closeInfoModal()" class="px-8 py-3.5 bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-500 text-white font-bold text-base rounded-2xl shadow-xl hover:opacity-90 transition border border-white/20 transform hover:scale-105">
+                    เข้าใจแล้ว, เริ่มเล่นเกมกันเลย! <i class="fa-solid fa-arrow-right ml-2"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Intermission Quiz Modal -->
+    <div id="quiz-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xl z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass-panel max-w-lg w-full p-6 sm:p-8 rounded-3xl shadow-2xl border border-amber-500/40 text-center">
+            <div class="w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-2xl mx-auto mb-4 border border-amber-500/40 shadow-lg">
+                <i class="fa-solid fa-question"></i>
+            </div>
+            <h3 id="quiz-title" class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-emerald-300 mb-2">คำถามท้าทายความคิด</h3>
+            <p id="quiz-question" class="text-base text-slate-200 mb-6 font-medium">พืชใช้สิ่งใดเป็นแหล่งพลังงานหลักในการสังเคราะห์ด้วยแสงเพื่อสร้างอาหาร?</p>
+            
+            <div id="quiz-options" class="space-y-3.5">
+                <!-- Dynamically injected options -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Victory Modal with Enlarged Science Summary & Gorgeous Graphics -->
+    <div id="victory-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xl z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass-panel max-w-xl w-full p-6 sm:p-10 rounded-3xl shadow-2xl border-2 border-emerald-500/40 text-center">
+            <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-emerald-500 via-cyan-400 to-blue-500 text-white flex items-center justify-center text-4xl mx-auto mb-4 shadow-xl shadow-emerald-500/50 border border-white/30">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <h3 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-300 to-amber-300 mb-1">ยินดีด้วย! ผ่านด่านสำเร็จ</h3>
+            <p id="vic-subtitle" class="text-sm text-slate-300 mb-6 font-medium">ต้นไม้เจริญเติบโตสมบูรณ์และงอกงามอย่างงดงาม</p>
+            
+            <!-- Enlarged Science Summary Educational Panel with Image -->
+            <div id="vic-science-panel" class="glass-card p-6 rounded-3xl mb-6 text-left border-2 border-emerald-500/40 flex flex-col sm:flex-row items-center gap-6 bg-slate-900/80 shadow-2xl">
+                <img id="vic-science-img" src="https://lh3.googleusercontent.com/d/1zVElBa_GVRCxIGTa97X7UZneksR7F0T5" alt="Science Concept" class="w-32 h-32 object-cover rounded-2xl border-2 border-emerald-400/60 shadow-xl flex-shrink-0">
+                <div class="space-y-2">
+                    <h4 class="text-base font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-graduation-cap text-lg text-emerald-400"></i> สาระการเรียนรู้วิทยาศาสตร์</h4>
+                    <p id="vic-science-text" class="text-sm sm:text-base text-slate-100 leading-relaxed font-medium">น้ำมีความสำคัญอย่างยิ่งต่อพืช ช่วยละลายและลำเลียงแร่ธาตุอาหาร</p>
+                </div>
+            </div>
+
+            <div class="glass-card p-5 rounded-2xl mb-6 space-y-3 text-left border-white/10">
+                <div class="flex justify-between text-sm sm:text-base">
+                    <span class="text-slate-300 font-medium">คะแนนสะสม:</span>
+                    <span id="vic-score" class="font-extrabold text-amber-400 text-lg">0</span>
+                </div>
+                <div class="flex justify-between text-sm sm:text-base">
+                    <span class="text-slate-300 font-medium">ระดับดาวความสำเร็จ:</span>
+                    <span id="vic-stars" class="text-amber-400 text-2xl">⭐⭐⭐</span>
+                </div>
+            </div>
+
+            <button onclick="nextLevelOrRestart()" id="next-level-btn" class="w-full py-4 bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-500 text-white font-bold text-lg rounded-2xl shadow-xl hover:opacity-90 transition border border-white/20 transform hover:scale-105">
+                ไปด่านถัดไป <i class="fa-solid fa-arrow-right ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="gameover-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xl z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass-panel max-w-md w-full p-6 sm:p-8 rounded-3xl shadow-2xl border-2 border-rose-500/40 text-center">
+            <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-rose-500 to-orange-500 text-white flex items-center justify-center text-4xl mx-auto mb-4 shadow-xl shadow-rose-500/50 border border-white/30">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 class="text-2xl font-extrabold text-rose-400 mb-2">พืชเหี่ยวเฉาและพลังชีวิตหมดลง</h3>
+            <p class="text-xs sm:text-sm text-slate-300 mb-6 font-medium">เนื่องจากขาดปัจจัยสำคัญ หรือโดนแมลงศัตรูพืชทำลายมากเกินไป</p>
+            
+            <div class="glass-card p-4 rounded-2xl mb-6 text-sm text-slate-200 border-rose-500/30">
+                <p>💡 <span class="font-bold text-cyan-300">เกร็ดความรู้:</span> พืชต้องการทั้งน้ำ ปุ๋ย แสงแดดที่เพียงพอ และการปกป้องจากศัตรูพืช จึงจะสามารถเจริญเติบโตได้อย่างยั่งยืน</p>
+            </div>
+
+            <button onclick="restartGame()" class="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-bold text-base rounded-2xl shadow-xl hover:opacity-90 transition border border-white/20">
+                <i class="fa-solid fa-rotate-right mr-2"></i> ลองใหม่อีกครั้ง
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* ==========================================
+           GLOBAL GAME STATE VARIABLES
+           ========================================== */
+        let useAR = false;
+        let gameActive = false;
+        let currentLevelIndex = 0;
+        let score = 0;
+        let playerHP = 200;
+        let plantGrowth = 0;
+        let levelTimeLeft = 50;
+        let levelTimerInterval = null;
+        let canvas, ctx, videoElement;
+        let poseInstance = null;
+        let cameraInstance = null;
+        let playerX = 400;
+        let playerY = 500;
+        let playerTargetX = 400;
+        let mouseX = 400;
+        let fallingItems = [];
+        let particles = [];
+        let floatingTexts = [];
+        let keysPressed = { left: false, right: false };
+        let lastFrameTime = 0;
+        let frameCount = 0;
+        let currentFPS = 60;
+        let soundEnabled = true;
+        let audioCtx = null;
+        let bgmInterval = null;
+        let bgmNoteIndex = 0;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        /* ==========================================
+           GAME DATA & CONFIGURATION
+           ========================================== */
+        const levelsData = [
+            {
+                level: 1,
+                title: "ด่านที่ 1: รวบรวมหยดน้ำและปุ๋ย",
+                description: "พืชต้องการน้ำและธาตุอาหารจากปุ๋ยเพื่อละลายแร่ธาตุและเสริมสร้างการเจริญเติบโตจนดอกไม้บาน 100%!",
+                targetItem: "water_fertilizer",
+                decoyItems: ["decoy_rock", "decoy_cricket"],
+                badItem: null,
+                itemSpeed: 4.8,
+                spawnRate: 18,
+                targetScore: 120,
+                scienceImage: "https://lh3.googleusercontent.com/d/1zVElBa_GVRCxIGTa97X7UZneksR7F0T5",
+                scienceSummary: "💧🌱 <strong>น้ำและปุ๋ย (Water & Fertilizer):</strong> รากพืชดูดซึมน้ำเพื่อลำเลียงแร่ธาตุอาหารจากปุ๋ยเข้าสู่ลำต้น ช่วยให้เซลล์พืชแข็งแรงและเจริญเติบโตได้อย่างสมบูรณ์"
+            },
+            {
+                level: 2,
+                title: "ด่านที่ 2: รวบรวมน้ำ ปุ๋ย และแสงแดด",
+                description: "พืชใช้น้ำ ปุ๋ย และพลังงานจากแสงแดดในการสังเคราะห์ด้วยแสงและการเจริญเติบโต ทำให้ดอกไม้บานสะพรั่ง 100%!",
+                targetItem: "water_fertilizer_sun",
+                decoyItems: ["decoy_worm", "decoy_rock"],
+                badItem: null,
+                itemSpeed: 6.2,
+                spawnRate: 15,
+                targetScore: 220,
+                scienceImage: "https://lh3.googleusercontent.com/d/1_BKGlk_kzfF4XRokGwiz80KZrYB-OhXl",
+                scienceSummary: "💧🌱☀️ <strong>น้ำ ปุ๋ย และแสงแดด (Water, Fertilizer & Sunlight):</strong> พืชต้องอาศัยน้ำและปุ๋ยทางรากร่วมกับแสงแดดทางใบ เพื่อขับเคลื่อนกระบวนการสร้างอาหารและการเติบโตอย่างเต็มที่"
+            },
+            {
+                level: 3,
+                title: "ด่านที่ 3: น้ำ ปุ๋ย แสง และศัตรูพืช",
+                description: "รวบรวมน้ำ ปุ๋ย และแสงแดด พร้อมหลบหลีกศัตรูพืช ให้ดอกไม้บานสมบูรณ์ 100%!",
+                targetItem: "all_growth",
+                decoyItems: ["decoy_rock", "decoy_cricket", "decoy_worm", "decoy_mouse"],
+                badItem: "pest",
+                itemSpeed: 7.8,
+                spawnRate: 11,
+                targetScore: 380,
+                scienceImage: "https://lh3.googleusercontent.com/d/1tGx29HYB4UVhhltYM3JCSyIKBRzXxhpk",
+                scienceSummary: "🌿🔬 <strong>ธาตุอาหารจากปุ๋ยและหลักฐานเชิงประจักษ์:</strong> ปุ๋ยให้ธาตุอาหารหลัก (ไนโตรเจน ฟอสฟอรัส โพแทสเซียม) ที่พืชขาดไม่ได้ ร่วมกับน้ำและแสงแดด ทำให้พืชเจริญเติบโตได้อย่างสมบูรณ์แข็งแรงและต้านทานศัตรูพืชได้ดี"
+            }
+        ];
+
+        /* Questions for Intermission Quiz */
+        const scienceQuestions = [
+            {
+                question: "นอกจากน้ำและแสงแดดแล้ว 'ปุ๋ย' มีความสำคัญอย่างไรต่อพืช?",
+                options: [
+                    { text: "ให้ธาตุอาหารและแร่ธาตุที่จำเป็นต่อการเจริญเติบโตของรากและใบ", correct: true },
+                    { text: "ใช้เป็นแหล่งพลังงานแสงแทนดวงอาทิตย์", correct: false },
+                    { text: "ช่วยให้พืชคายน้ำได้ดีขึ้นโดยไม่ต้องรดน้ำ", correct: false }
+                ]
+            },
+            {
+                question: "หน้าที่หลักของ 'รากพืช' และ 'น้ำ' คือข้อใด?",
+                options: [
+                    { text: "น้ำช่วยละลายและลำเลียงแร่ธาตุอาหารจากดินขึ้นสู่ลำต้น", correct: true },
+                    { text: "น้ำทำให้พืชมีน้ำหนักตัวเพิ่มขึ้นอย่างเดียว", correct: false },
+                    { text: "น้ำใช้สร้างดอกไม้โดยตรงโดยไม่ต้องผ่านราก", correct: false }
+                ]
+            },
+            {
+                question: "หากพืชขาดปัจจัยสำคัญ (น้ำ ปุ๋ย แสงแดด) เป็นเวลานาน จะเกิดผลอย่างไร?",
+                options: [
+                    { text: "พืชจะเจริญเติบโตช้า ใบเหลือง และเหี่ยวเฉาตายในที่สุด", correct: true },
+                    { text: "พืชจะปรับตัวเติบโตได้ดีขึ้นโดยไม่ต้องใช้อะไรเลย", correct: false },
+                    { text: "พืชจะเปลี่ยนไปสังเคราะห์แสงจากแสงไฟแทนได้ทันที", correct: false }
+                ]
+            }
+        ];
+
+        /* ==========================================
+           IMAGE ASSETS PRELOADER
+           ========================================== */
+        const itemImages = {};
+        const imageUrls = {
+            water: "https://lh3.googleusercontent.com/d/1zVElBa_GVRCxIGTa97X7UZneksR7F0T5",
+            fertilizer: "https://lh3.googleusercontent.com/d/1tGx29HYB4UVhhltYM3JCSyIKBRzXxhpk",
+            sun: "https://lh3.googleusercontent.com/d/1_BKGlk_kzfF4XRokGwiz80KZrYB-OhXl",
+            decoy_rock: "https://lh3.googleusercontent.com/d/1C3cARKFCGFWPdwwCFSR1wR7ytEw5EzKD",
+            decoy_cricket: "https://lh3.googleusercontent.com/d/1qEE79m8QBYcz6b4bBvICdfnrzu0ROVqs",
+            decoy_worm: "https://lh3.googleusercontent.com/d/1Q0PX3Y0A5cWqU7WWDZ3-wUsHdNXOYvpn",
+            decoy_mouse: "https://lh3.googleusercontent.com/d/1F7-64qRyUjUkq8lFn_5yFZ8wvJDTMsPo",
+            pest: "https://lh3.googleusercontent.com/d/1Q0PX3Y0A5cWqU7WWDZ3-wUsHdNXOYvpn"
+        };
+
+        function preloadImages() {
+            for (let key in imageUrls) {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.src = imageUrls[key];
+                itemImages[key] = img;
+            }
+        }
+
+        function playSoundEffect(type) {
+            if (!soundEnabled) return;
+            try {
+                initAudio();
+                if (!audioCtx) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                const now = audioCtx.currentTime;
+
+                if (type === 'collect') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.exponentialRampToValueAtTime(800, now + 0.15);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                    osc.start(now);
+                    osc.stop(now + 0.15);
+                } else if (type === 'hit') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(180, now);
+                    osc.frequency.linearRampToValueAtTime(80, now + 0.2);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                } else if (type === 'win') {
+                    const notes = [523.25, 659.25, 783.99, 1046.50];
+                    notes.forEach((freq, idx) => {
+                        const noteOsc = audioCtx.createOscillator();
+                        const noteGain = audioCtx.createGain();
+                        noteOsc.type = 'triangle';
+                        noteOsc.connect(noteGain);
+                        noteGain.connect(audioCtx.destination);
+                        
+                        const startTime = now + (idx * 0.12);
+                        noteOsc.frequency.setValueAtTime(freq, startTime);
+                        noteGain.gain.setValueAtTime(0.25, startTime);
+                        noteGain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.3);
+                        noteOsc.start(startTime);
+                        noteOsc.stop(startTime + 0.3);
+                    });
+                } else if (type === 'gameover') {
+                    const notes = [392.00, 311.13, 261.63];
+                    notes.forEach((freq, idx) => {
+                        const noteOsc = audioCtx.createOscillator();
+                        const noteGain = audioCtx.createGain();
+                        noteOsc.type = 'sawtooth';
+                        noteOsc.connect(noteGain);
+                        noteGain.connect(audioCtx.destination);
+                        
+                        const startTime = now + (idx * 0.2);
+                        noteOsc.frequency.setValueAtTime(freq, startTime);
+                        noteGain.gain.setValueAtTime(0.3, startTime);
+                        noteGain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.4);
+                        noteOsc.start(startTime);
+                        noteOsc.stop(startTime + 0.4);
+                    });
+                }
+            } catch (e) {
+                console.warn("Audio Context error:", e);
+            }
+        }
+
+        function startBGM() {
+            if (bgmInterval) clearInterval(bgmInterval);
+            const melody = [261.63, 293.66, 329.63, 392.00, 440.00, 392.00, 329.63, 293.66];
+            bgmNoteIndex = 0;
+
+            bgmInterval = setInterval(() => {
+                if (!soundEnabled || !gameActive) return;
+                try {
+                    initAudio();
+                    if (!audioCtx) return;
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+
+                    const now = audioCtx.currentTime;
+                    const freq = melody[bgmNoteIndex];
+                    bgmNoteIndex = (bgmNoteIndex + 1) % melody.length;
+
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.04, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                } catch (err) {
+                    // ignore audio play restriction warnings before user interaction
+                }
+            }, 300);
+        }
+
+        function stopBGM() {
+            if (bgmInterval) {
+                clearInterval(bgmInterval);
+                bgmInterval = null;
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const btn = document.getElementById('sound-btn');
+            btn.innerHTML = soundEnabled ? '<i class="fa-solid fa-volume-high text-sm"></i>' : '<i class="fa-solid fa-volume-xmark text-sm"></i>';
+            if (soundEnabled && gameActive) {
+                startBGM();
+            } else {
+                stopBGM();
+            }
+        }
+
+        /* ==========================================
+           MODAL CONTROLLERS
+           ========================================== */
+        function openInfoModal() {
+            document.getElementById('info-modal').classList.remove('hidden');
+        }
+        function closeInfoModal() {
+            document.getElementById('info-modal').classList.add('hidden');
+        }
+
+        /* ==========================================
+           INITIALIZATION & ENGINE SETUP
+           ========================================== */
+        window.addEventListener('DOMContentLoaded', () => {
+            canvas = document.getElementById('game-canvas');
+            ctx = canvas.getContext('2d');
+            videoElement = document.getElementById('webcam');
+
+            preloadImages();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            setupFallbackListeners();
+        });
+
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            playerX = canvas.width / 2;
+            playerY = canvas.height - 70;
+            playerTargetX = playerX;
+        }
+
+        function setupFallbackListeners() {
+            window.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                mouseX = e.clientX - rect.left;
+                if (!useAR && mouseX >= 0 && mouseX <= canvas.width) {
+                    playerTargetX = mouseX;
+                }
+            });
+
+            canvas.addEventListener('touchmove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                if (e.touches.length > 0) {
+                    const touchX = e.touches[0].clientX - rect.left;
+                    if (!useAR && touchX >= 0 && touchX <= canvas.width) {
+                        playerTargetX = touchX;
+                    }
+                }
+                e.preventDefault();
+            }, { passive: false });
+
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowLeft' || e.key === 'a') keysPressed.left = true;
+                if (e.key === 'ArrowRight' || e.key === 'd') keysPressed.right = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                if (e.key === 'ArrowLeft' || e.key === 'a') keysPressed.left = false;
+                if (e.key === 'ArrowRight' || e.key === 'd') keysPressed.right = false;
+            });
+        }
+
+        async function initGameEngine(arMode) {
+            useAR = arMode;
+            document.getElementById('loading-overlay').classList.add('hidden');
+            document.getElementById('game-hud').classList.remove('hidden');
+            document.getElementById('control-mode-badge').innerText = useAR ? "AI Pose AR Active" : "Fallback Control";
+
+            gameActive = true;
+            plantGrowth = 0;
+            score = 0;
+            playerHP = 200;
+            levelTimeLeft = 50;
+            fallingItems = [];
+            particles = [];
+            floatingTexts = [];
+
+            updateHUD();
+            showBanner(levelsData[currentLevelIndex].title + ": " + levelsData[currentLevelIndex].description, 4000);
+            startBGM();
+            startLevelTimer();
+
+            if (useAR) {
+                try {
+                    poseInstance = new Pose({
+                        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+                    });
+                    poseInstance.setOptions({
+                        modelComplexity: 1,
+                        smoothLandmarks: true,
+                        enableSegmentation: false,
+                        minDetectionConfidence: 0.5,
+                        minTrackingConfidence: 0.5
+                    });
+                    poseInstance.onResults(onResults);
+
+                    cameraInstance = new Camera(videoElement, {
+                        onFrame: async () => {
+                            if (gameActive && useAR) {
+                                await poseInstance.send({ image: videoElement });
+                            }
+                        },
+                        width: 640,
+                        height: 480
+                    });
+                    await cameraInstance.start();
+                } catch (err) {
+                    console.warn("Camera or MediaPipe initialization failed, switching to fallback mode.", err);
+                    useAR = false;
+                    document.getElementById('control-mode-badge').innerText = "Fallback Control (Cam Error)";
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startLevelTimer() {
+            if (levelTimerInterval) clearInterval(levelTimerInterval);
+            levelTimeLeft = 50;
+            levelTimerInterval = setInterval(() => {
+                if (!gameActive) return;
+                levelTimeLeft--;
+                if (levelTimeLeft <= 0) {
+                    clearInterval(levelTimerInterval);
+                    levelTimerInterval = null;
+                    if (plantGrowth >= 100) {
+                        triggerLevelComplete();
+                    } else {
+                        triggerGameOver();
+                    }
+                }
+                updateHUD();
+            }, 1000);
+        }
+
+        /* ==========================================
+           MEDIAPIPE AI RESULTS CALLBACK
+           ========================================== */
+        function onResults(results) {
+            if (!gameActive || !useAR) return;
+
+            if (results.poseLandmarks) {
+                const leftWrist = results.poseLandmarks[15];
+                const rightWrist = results.poseLandmarks[16];
+                
+                if (leftWrist && rightWrist) {
+                    const avgNormX = 1.0 - ((leftWrist.x + rightWrist.x) / 2.0);
+                    playerTargetX = avgNormX * canvas.width;
+                }
+            }
+        }
+
+        /* ==========================================
+           GAME LOOP & RENDERING
+           ========================================== */
+        function gameLoop(timestamp) {
+            if (!gameActive) return;
+
+            frameCount++;
+            if (timestamp - lastFrameTime >= 1000) {
+                currentFPS = Math.round((frameCount * 1000) / (timestamp - lastFrameTime));
+                document.getElementById('fps-counter').innerText = `FPS: ${currentFPS}`;
+                frameCount = 0;
+                lastFrameTime = timestamp;
+            }
+
+            updateGameLogic();
+            drawLoop();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateGameLogic() {
+            const speed = 10;
+            if (keysPressed.left) playerTargetX -= speed;
+            if (keysPressed.right) playerTargetX += speed;
+            playerTargetX = Math.max(40, Math.min(canvas.width - 40, playerTargetX));
+
+            playerX += (playerTargetX - playerX) * 0.2;
+
+            const currentLevel = levelsData[currentLevelIndex];
+            if (Math.random() * 100 < (100 / currentLevel.spawnRate)) {
+                spawnItem(currentLevel);
+            }
+
+            for (let i = fallingItems.length - 1; i >= 0; i--) {
+                let item = fallingItems[i];
+                item.y += item.speed;
+                item.rotation += item.rotSpeed;
+
+                const dx = playerX - item.x;
+                const dy = playerY - item.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < 55) {
+                    handleItemCollision(item);
+                    fallingItems.splice(i, 1);
+                    continue;
+                }
+
+                if (item.y > canvas.height + 40) {
+                    if (item.type === 'water' || item.type === 'fertilizer' || item.type === 'sun') {
+                        playerHP = Math.max(0, playerHP - 3);
+                    }
+                    fallingItems.splice(i, 1);
+                }
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                let ft = floatingTexts[i];
+                ft.y -= 1.5;
+                ft.alpha -= 0.02;
+                if (ft.alpha <= 0) floatingTexts.splice(i, 1);
+            }
+
+            if (plantGrowth >= 100) {
+                triggerLevelComplete();
+            }
+
+            if (playerHP <= 0) {
+                triggerGameOver();
+            }
+
+            updateHUD();
+        }
+
+        function spawnItem(levelConfig) {
+            let type = levelConfig.targetItem;
+            if (type === 'water_fertilizer') {
+                const rand = Math.random();
+                if (rand < 0.4) type = 'water';
+                else if (rand < 0.8) type = 'fertilizer';
+                else type = 'sun';
+            } else if (type === 'water_fertilizer_sun') {
+                const rand = Math.random();
+                if (rand < 0.33) type = 'water';
+                else if (rand < 0.66) type = 'fertilizer';
+                else type = 'sun';
+            } else if (type === 'all_growth') {
+                const rand = Math.random();
+                if (rand < 0.3) type = 'water';
+                else if (rand < 0.6) type = 'fertilizer';
+                else type = 'sun';
+            }
+
+            if (levelConfig.decoyItems && Math.random() < 0.4) {
+                const decoys = levelConfig.decoyItems;
+                type = decoys[Math.floor(Math.random() * decoys.length)];
+            }
+
+            if (levelConfig.badItem && Math.random() < 0.25) {
+                type = 'pest';
+            }
+
+            const x = Math.random() * (canvas.width - 120) + 60;
+            const speed = levelConfig.itemSpeed + (Math.random() * 1.5);
+
+            fallingItems.push({
+                x: x,
+                y: -60,
+                type: type,
+                speed: speed,
+                rotation: Math.random() * 0.2 - 0.1,
+                rotSpeed: (Math.random() - 0.5) * 0.02
+            });
+        }
+
+        function handleItemCollision(item) {
+            if (item.type === 'water') {
+                score += 15;
+                plantGrowth = Math.min(100, plantGrowth + 10);
+                playSoundEffect('collect');
+                createParticles(item.x, item.y, '#06b6d4');
+                addFloatingText("💧 +15 หยดน้ำ", item.x, item.y, '#06b6d4');
+            } else if (item.type === 'fertilizer') {
+                score += 18;
+                plantGrowth = Math.min(100, plantGrowth + 12);
+                playSoundEffect('collect');
+                createParticles(item.x, item.y, '#10b981');
+                addFloatingText("🌱 +18 ปุ๋ยบำรุง", item.x, item.y, '#10b981');
+            } else if (item.type === 'sun') {
+                score += 20;
+                plantGrowth = Math.min(100, plantGrowth + 15);
+                playSoundEffect('collect');
+                createParticles(item.x, item.y, '#fbbf24');
+                addFloatingText("☀️ +20 แสงแดด", item.x, item.y, '#fbbf24');
+            } else if (item.type === 'decoy_rock') {
+                score = Math.max(0, score - 10);
+                playerHP = Math.max(0, playerHP - 15);
+                playSoundEffect('hit');
+                createParticles(item.x, item.y, '#94a3b8');
+                addFloatingText("🪨 -15 HP (หินไม่ใช่พืช!)", item.x, item.y, '#94a3b8');
+            } else if (item.type === 'decoy_cricket') {
+                score = Math.max(0, score - 10);
+                playerHP = Math.max(0, playerHP - 15);
+                playSoundEffect('hit');
+                createParticles(item.x, item.y, '#22c55e');
+                addFloatingText("🦗 -15 HP (จิ้งหรีดกวนพืช!)", item.x, item.y, '#22c55e');
+            } else if (item.type === 'decoy_worm') {
+                score = Math.max(0, score - 10);
+                playerHP = Math.max(0, playerHP - 15);
+                playSoundEffect('hit');
+                createParticles(item.x, item.y, '#ec4899');
+                addFloatingText("🐛 -15 HP (หนอนกินใบพืช!)", item.x, item.y, '#ec4899');
+            } else if (item.type === 'decoy_mouse' || item.type === 'pest') {
+                score = Math.max(0, score - 15);
+                playerHP = Math.max(0, playerHP - 20);
+                playSoundEffect('hit');
+                createParticles(item.x, item.y, '#ef4444');
+                addFloatingText("🐀 -20 HP (หนูทำลายรากพืช!)", item.x, item.y, '#ef4444');
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 14; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 5 + 1;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    color: color,
+                    life: 1.0,
+                    size: Math.random() * 6 + 3
+                });
+            }
+        }
+
+        function addFloatingText(text, x, y, color) {
+            floatingTexts.push({ text, x, y, color, alpha: 1.0 });
+        }
+
+        /* ==========================================
+           DRAW LOOP (Canvas Rendering)
+           ========================================== */
+        function drawLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawGardenEnvironment();
+            drawPlant();
+
+            fallingItems.forEach(item => {
+                ctx.save();
+                ctx.translate(item.x, item.y);
+                ctx.rotate(item.rotation);
+
+                const img = itemImages[item.type];
+                const size = 72;
+
+                ctx.save();
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+
+                let glowColor = 'rgba(56, 189, 248, 0.95)';
+                let borderColor = '#06b6d4';
+
+                if (item.type === 'water') {
+                    glowColor = 'rgba(6, 182, 212, 0.95)';
+                    borderColor = '#22d3ee';
+                } else if (item.type === 'fertilizer') {
+                    glowColor = 'rgba(16, 185, 129, 0.95)';
+                    borderColor = '#34d399';
+                } else if (item.type === 'sun') {
+                    glowColor = 'rgba(251, 191, 36, 0.95)';
+                    borderColor = '#f59e0b';
+                } else if (item.type === 'decoy_rock') {
+                    glowColor = 'rgba(148, 163, 184, 0.95)';
+                    borderColor = '#cbd5e1';
+                } else if (item.type === 'decoy_cricket') {
+                    glowColor = 'rgba(34, 197, 94, 0.95)';
+                    borderColor = '#4ade80';
+                } else if (item.type === 'decoy_worm') {
+                    glowColor = 'rgba(236, 72, 153, 0.95)';
+                    borderColor = '#f472b6';
+                } else if (item.type === 'decoy_mouse' || item.type === 'pest') {
+                    glowColor = 'rgba(239, 68, 68, 0.95)';
+                    borderColor = '#f87171';
+                }
+
+                ctx.shadowColor = glowColor;
+                ctx.shadowBlur = 22;
+
+                ctx.beginPath();
+                ctx.arc(0, 0, size/2 + 5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+                ctx.fill();
+
+                ctx.lineWidth = 5;
+                ctx.strokeStyle = borderColor;
+                ctx.stroke();
+                ctx.restore();
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(0, 0, size/2, 0, Math.PI * 2);
+                ctx.clip();
+
+                if (img && img.complete && img.naturalWidth !== 0) {
+                    ctx.filter = 'none';
+                    ctx.drawImage(img, -size/2, -size/2, size, size);
+                } else {
+                    ctx.fillStyle = '#10b981';
+                    ctx.fillRect(-size/2, -size/2, size, size);
+                }
+                ctx.restore();
+
+                ctx.restore();
+            });
+
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            floatingTexts.forEach(ft => {
+                ctx.save();
+                ctx.globalAlpha = ft.alpha;
+                ctx.fillStyle = ft.color;
+                ctx.font = 'bold 16px Sarabun, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(ft.text, ft.x, ft.y);
+                ctx.restore();
+            });
+
+            ctx.save();
+            ctx.translate(playerX, playerY);
+            
+            const grad = ctx.createRadialGradient(0, 0, 5, 0, 0, 35);
+            grad.addColorStop(0, 'rgba(239, 68, 68, 0.6)');
+            grad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(0, 0, 35, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(0, 0, 24, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = '#f87171';
+            ctx.beginPath();
+            ctx.arc(0, 0, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(-32, 0); ctx.lineTo(-14, 0);
+            ctx.moveTo(14, 0); ctx.lineTo(32, 0);
+            ctx.moveTo(0, -32); ctx.lineTo(0, -14);
+            ctx.moveTo(0, 14); ctx.lineTo(0, 32);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawGardenEnvironment() {
+            const groundHeight = 50;
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+
+            ctx.fillStyle = '#059669';
+            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, 8);
+        }
+
+        function drawPlant() {
+            const centerX = canvas.width / 2;
+            const groundY = canvas.height - 50;
+            const growthFactor = plantGrowth / 100;
+
+            ctx.save();
+            ctx.translate(centerX, groundY);
+
+            const stemHeight = 30 + (growthFactor * 160);
+            
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 6 + (growthFactor * 4);
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(10, -stemHeight / 2, 0, -stemHeight);
+            ctx.stroke();
+
+            if (growthFactor > 0.3) {
+                ctx.fillStyle = '#34d399';
+                ctx.beginPath();
+                ctx.ellipse(-25, -stemHeight * 0.4, 25 * growthFactor, 12 * growthFactor, -Math.PI / 6, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            if (growthFactor > 0.6) {
+                ctx.fillStyle = '#34d399';
+                ctx.beginPath();
+                ctx.ellipse(25, -stemHeight * 0.7, 25 * growthFactor, 12 * growthFactor, Math.PI / 6, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            if (growthFactor >= 0.9) {
+                ctx.fillStyle = '#f59e0b';
+                ctx.beginPath();
+                ctx.arc(0, -stemHeight - 15, 20, 0, Math.PI * 2);
+                ctx.fill();
+
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i * Math.PI * 2) / 5;
+                    const px = Math.cos(angle) * 18;
+                    const py = -stemHeight - 15 + Math.sin(angle) * 18;
+                    ctx.fillStyle = '#ec4899';
+                    ctx.beginPath();
+                    ctx.arc(px, py, 10, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath();
+                ctx.arc(0, -stemHeight - 15, 8, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (growthFactor > 0.4) {
+                ctx.fillStyle = '#10b981';
+                ctx.beginPath();
+                ctx.arc(0, -stemHeight - 10, 12 * growthFactor, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        /* ==========================================
+           UI UPDATES & GAME FLOW MANAGEMENT
+           ========================================== */
+        function updateHUD() {
+            document.getElementById('hud-level').innerText = `ด่าน ${currentLevelIndex + 1}/3`;
+            document.getElementById('hud-timer').innerText = `${levelTimeLeft}s`;
+            document.getElementById('hud-hp').style.width = `${playerHP}%`;
+            document.getElementById('hud-growth').innerText = `${Math.round(plantGrowth)}%`;
+        }
+
+        function showBanner(text, duration = 4000) {
+            const banner = document.getElementById('game-banner');
+            const bannerText = document.getElementById('banner-text');
+            bannerText.innerText = text;
+            banner.classList.remove('hidden');
+            setTimeout(() => {
+                banner.classList.add('hidden');
+            }, duration);
+        }
+
+        function triggerLevelComplete() {
+            gameActive = false;
+            stopBGM();
+            if (levelTimerInterval) {
+                clearInterval(levelTimerInterval);
+                levelTimerInterval = null;
+            }
+            playSoundEffect('win');
+
+            const currentConfig = levelsData[currentLevelIndex];
+            document.getElementById('vic-score').innerText = score;
+            document.getElementById('vic-stars').innerText = plantGrowth >= 100 ? "⭐⭐⭐" : "⭐⭐";
+            
+            document.getElementById('vic-science-img').src = currentConfig.scienceImage;
+            document.getElementById('vic-science-text').innerHTML = currentConfig.scienceSummary;
+
+            const nextBtn = document.getElementById('next-level-btn');
+            if (currentLevelIndex < levelsData.length - 1) {
+                nextBtn.innerHTML = 'ไปด่านถัดไป <i class="fa-solid fa-arrow-right ml-2"></i>';
+            } else {
+                nextBtn.innerHTML = '🏆 จบเกมทั้งหมด (เริ่มใหม่)';
+            }
+
+            document.getElementById('victory-modal').classList.remove('hidden');
+        }
+
+        function triggerGameOver() {
+            gameActive = false;
+            stopBGM();
+            if (levelTimerInterval) {
+                clearInterval(levelTimerInterval);
+                levelTimerInterval = null;
+            }
+            playSoundEffect('gameover');
+            document.getElementById('gameover-modal').classList.remove('hidden');
+        }
+
+        function nextLevelOrRestart() {
+            document.getElementById('victory-modal').classList.add('hidden');
+            if (currentLevelIndex < levelsData.length - 1) {
+                triggerIntermissionQuiz();
+            } else {
+                currentLevelIndex = 0;
+                restartGame();
+            }
+        }
+
+        function triggerIntermissionQuiz() {
+            const q = scienceQuestions[currentLevelIndex % scienceQuestions.length];
+            document.getElementById('quiz-question').innerText = q.question;
+            
+            const optionsContainer = document.getElementById('quiz-options');
+            optionsContainer.innerHTML = '';
+
+            q.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "w-full p-3.5 glass-card hover:bg-emerald-500/20 text-left text-sm sm:text-base rounded-2xl transition font-semibold text-slate-200 border border-white/15 flex items-center justify-between shadow-md";
+                btn.innerHTML = `<span>${opt.text}</span> <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>`;
+                btn.onclick = () => {
+                    if (opt.correct) {
+                        score += 50;
+                        playSoundEffect('collect');
+                        document.getElementById('quiz-modal').classList.add('hidden');
+                        currentLevelIndex++;
+                        startLevel();
+                    } else {
+                        playSoundEffect('hit');
+                        btn.classList.add('bg-rose-500/20', 'border-rose-500');
+                        setTimeout(() => {
+                            document.getElementById('quiz-modal').classList.add('hidden');
+                            currentLevelIndex++;
+                            startLevel();
+                        }, 1000);
+                    }
+                };
+                optionsContainer.appendChild(btn);
+            });
+
+            document.getElementById('quiz-modal').classList.remove('hidden');
+        }
+
+        function startLevel() {
+            plantGrowth = 0;
+            fallingItems = [];
+            particles = [];
+            gameActive = true;
+            levelTimeLeft = 50;
+            showBanner(levelsData[currentLevelIndex].title + ": " + levelsData[currentLevelIndex].description, 4000);
+            startBGM();
+            startLevelTimer();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function restartGame() {
+            document.getElementById('gameover-modal').classList.add('hidden');
+            document.getElementById('victory-modal').classList.add('hidden');
+            currentLevelIndex = 0;
+            score = 0;
+            playerHP = 200;
+            plantGrowth = 0;
+            levelTimeLeft = 50;
+            fallingItems = [];
+            gameActive = true;
+            showBanner(levelsData[0].title + " เริ่มต้นใหม่!", 3000);
+            startBGM();
+            startLevelTimer();
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
